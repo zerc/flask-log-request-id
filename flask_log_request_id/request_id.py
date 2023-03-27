@@ -1,11 +1,10 @@
-import uuid
 import logging as _logging
+import uuid
 
-from flask import request, g, current_app
+from flask import current_app, g, request
 
+from .ctx_fetcher import ExecutedOutsideContext, MultiContextRequestIdFetcher
 from .parser import auto_parser
-from .ctx_fetcher import MultiContextRequestIdFetcher, ExecutedOutsideContext
-
 
 logger = _logging.getLogger(__name__)
 
@@ -15,12 +14,11 @@ def flask_ctx_get_request_id():
     Get request id from flask's G object
     :return: The id or None if not found.
     """
-    from flask import _app_ctx_stack as stack  # We do not support < Flask 0.9
-
-    if stack.top is None:
+    try:
+        g_object_attr = current_app.config["LOG_REQUEST_ID_G_OBJECT_ATTRIBUTE"]
+    except RuntimeError:
         raise ExecutedOutsideContext()
 
-    g_object_attr = stack.top.app.config['LOG_REQUEST_ID_G_OBJECT_ATTRIBUTE']
     return g.get(g_object_attr, None)
 
 
@@ -60,9 +58,9 @@ class RequestID(object):
     def init_app(self, app):
 
         # Default configuration
-        app.config.setdefault('LOG_REQUEST_ID_GENERATE_IF_NOT_FOUND', True)
-        app.config.setdefault('LOG_REQUEST_ID_LOG_ALL_REQUESTS', False)
-        app.config.setdefault('LOG_REQUEST_ID_G_OBJECT_ATTRIBUTE', 'log_request_id')
+        app.config.setdefault("LOG_REQUEST_ID_GENERATE_IF_NOT_FOUND", True)
+        app.config.setdefault("LOG_REQUEST_ID_LOG_ALL_REQUESTS", False)
+        app.config.setdefault("LOG_REQUEST_ID_G_OBJECT_ATTRIBUTE", "log_request_id")
 
         # Register before request callback
         @app.before_request
@@ -73,15 +71,15 @@ class RequestID(object):
 
             To be used as a consumer of Flask.before_request event.
             """
-            g_object_attr = current_app.config['LOG_REQUEST_ID_G_OBJECT_ATTRIBUTE']
+            g_object_attr = current_app.config["LOG_REQUEST_ID_G_OBJECT_ATTRIBUTE"]
 
             setattr(g, g_object_attr, self._request_id_parser())
             if g.get(g_object_attr) is None:
-                if app.config['LOG_REQUEST_ID_GENERATE_IF_NOT_FOUND']:
+                if app.config["LOG_REQUEST_ID_GENERATE_IF_NOT_FOUND"]:
                     setattr(g, g_object_attr, self._request_id_generator())
 
         # Register after request
-        if app.config['LOG_REQUEST_ID_LOG_ALL_REQUESTS']:
+        if app.config["LOG_REQUEST_ID_LOG_ALL_REQUESTS"]:
             app.after_request(self._log_http_event)
 
     @staticmethod
@@ -97,6 +95,7 @@ class RequestID(object):
                 ip=request.remote_addr,
                 method=request.method,
                 path=request.path,
-                status_code=response.status_code)
+                status_code=response.status_code,
+            )
         )
         return response
